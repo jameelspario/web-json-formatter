@@ -12,6 +12,7 @@ class TabModel {
 
   */
   dynamic state; 
+  dynamic updatedAt;
 
   TabModel({
      this.id,
@@ -21,6 +22,7 @@ class TabModel {
      this.state = 0,
      this.isBold = 0,
      this.isItalic = 0,
+     this.updatedAt,
   });
 
   Map<String, dynamic> toJson() {
@@ -32,6 +34,7 @@ class TabModel {
       'state': state,
       'isBold': isBold,
       'isItalic': isItalic,
+      'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
     };
   }
 
@@ -44,6 +47,7 @@ class TabModel {
       state: json['state'] ?? 0,
       isBold: json['isBold'] ?? 0,
       isItalic: json['isItalic'] ?? 0,
+      updatedAt: json['updatedAt'],
     );
   }
 }

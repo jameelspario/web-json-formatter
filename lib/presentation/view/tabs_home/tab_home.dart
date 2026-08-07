@@ -172,12 +172,26 @@ class ItemTab extends StatelessWidget {
                 ),
                 selected?.id != item.id
                     ? Container()
-                    : InkWell(
-                        onTap: onRemove,
-                        child: Row(
-                          children: [
-                            2.0.spaceX,
-                            Padding(
+                    : Row(
+                        children: [
+                          2.0.spaceX,
+                          InkWell(
+                            onTap: () => homeController.saveTabToSavedList(item),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2.0),
+                              child: Icon(
+                                Icons.bookmark_add_outlined,
+                                size: 12,
+                                color: isSelected
+                                    ? Colors.white
+                                    : unselectedTextColor,
+                              ),
+                            ),
+                          ),
+                          2.0.spaceX,
+                          InkWell(
+                            onTap: onRemove,
+                            child: Padding(
                               padding: const EdgeInsets.all(2.0),
                               child: Icon(
                                 Icons.close,
@@ -187,8 +201,8 @@ class ItemTab extends StatelessWidget {
                                     : unselectedTextColor,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
               ],
             ),

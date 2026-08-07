@@ -43,6 +43,7 @@ class HomePageController extends GetxController {
   var currentUserEmail = RxnString();
   var savedJsons = <CloudJson>[].obs;
   var cloudSyncMode = 'Local'.obs;
+  RxList<TabModel> savedTabsList = <TabModel>[].obs;
 
   // Signal so JsonBeautifierPage can subscribe and run beautify
   final beautifySignal = StreamController<void>.broadcast();
@@ -163,25 +164,34 @@ class HomePageController extends GetxController {
     super.onInit();
     _loadTheme();
     _loadTabsFromLocal();
+    _loadSavedTabsListFromLocal();
     controller.addListener(_onTextChanged);
-    _initCloudUser();
   }
 
-  _initCloudUser() async {
-    if (CloudStorageManager.firebaseInitialized) {
-      cloudSyncMode.value = 'Firebase';
-    } else {
-      cloudSyncMode.value = 'Local';
-    }
-    currentUserEmail.value = CloudStorageManager.service.getCurrentUserEmail();
-    if (currentUserEmail.value != null) {
-      await refreshSavedJsons();
+  Future<void> _loadSavedTabsListFromLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString('saved_tabs_permanent_list');
+      if (jsonString != null && jsonString.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(jsonString);
+        final loaded = decoded
+            .map((item) => TabModel.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+        savedTabsList.assignAll(loaded);
+      }
+    } catch (e) {
+      print("Error loading saved tabs list: $e");
     }
   }
 
-  Future<void> refreshSavedJsons() async {
-    if (currentUserEmail.value != null) {
-      savedJsons.value = await CloudStorageManager.service.fetchSavedJsons();
+  Future<void> _saveSavedTabsListToLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = savedTabsList.map((tab) => tab.toJson()).toList();
+      final jsonString = jsonEncode(list);
+      await prefs.setString('saved_tabs_permanent_list', jsonString);
+    } catch (e) {
+      print("Error saving saved tabs list: $e");
     }
   }
 
@@ -189,86 +199,98 @@ class HomePageController extends GetxController {
     Get.dialog(const ProfileDialog());
   }
 
-  Future<bool> loginCloud(String email, String password) async {
-    final success = await CloudStorageManager.service.login(email, password);
-    if (success) {
-      currentUserEmail.value = email;
-      await refreshSavedJsons();
-      ShowToastDialog.showToast("Logged in successfully");
-    }
-    return success;
+  void saveCurrentTabToSavedList({String? customName}) {
+    saveOldSelection();
+    if (selected.id == null) return;
+    saveTabToSavedList(selected, customName: customName);
   }
 
-  Future<bool> signUpCloud(String email, String password) async {
-    final success = await CloudStorageManager.service.signUp(email, password);
-    if (success) {
-      currentUserEmail.value = email;
-      await refreshSavedJsons();
-      ShowToastDialog.showToast("Account created successfully");
-    }
-    return success;
-  }
+  void saveTabToSavedList(TabModel tab, {String? customName}) {
+    final String nameToSave = (customName != null && customName.trim().isNotEmpty)
+        ? customName.trim()
+        : tab.name.toString();
+    final String dataToSave =
+        (selected.id == tab.id) ? controller.text : (tab.data ?? "");
 
-  Future<void> logoutCloud() async {
-    await CloudStorageManager.service.logout();
-    currentUserEmail.value = null;
-    savedJsons.clear();
-    ShowToastDialog.showToast("Logged out");
-  }
+    final updatedTab = TabModel(
+      id: tab.id ?? "${DateTime.now().millisecondsSinceEpoch}",
+      name: nameToSave,
+      data: dataToSave,
+      txtSize: tab.txtSize ?? 16.0,
+      isBold: tab.isBold ?? 0,
+      isItalic: tab.isItalic ?? 0,
+      state: tab.state ?? 0,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
 
-  Future<bool> saveCurrentJsonToCloud(String name) async {
-    if (currentUserEmail.value == null) {
-      ShowToastDialog.showToast("Please log in first");
-      return false;
-    }
-    final content = controller.text;
-    if (content.isEmpty) {
-      ShowToastDialog.showToast("JSON is empty");
-      return false;
-    }
-
-    final success = await CloudStorageManager.service.saveJson(name, content);
-    if (success) {
-      await refreshSavedJsons();
-      ShowToastDialog.showToast("JSON saved to cloud");
-      return true;
+    final existingIndex =
+        savedTabsList.indexWhere((t) => t.id == updatedTab.id);
+    if (existingIndex != -1) {
+      savedTabsList[existingIndex] = updatedTab;
     } else {
-      ShowToastDialog.showToast("Save failed. Limit reached (max 5 slots)");
-      return false;
+      savedTabsList.insert(0, updatedTab);
+    }
+
+    _saveSavedTabsListToLocal();
+    ShowToastDialog.showToast("Saved '${updatedTab.name}' to Saved Tabs list");
+  }
+
+  void deleteSavedTabFromList(dynamic tabId) {
+    savedTabsList.removeWhere((t) => t.id == tabId);
+    _saveSavedTabsListToLocal();
+    ShowToastDialog.showToast("Deleted from Saved Tabs");
+  }
+
+  void editSavedTabInList(TabModel targetTab,
+      {String? newName, String? newData}) {
+    final index = savedTabsList.indexWhere((t) => t.id == targetTab.id);
+    if (index != -1) {
+      final tab = savedTabsList[index];
+      if (newName != null && newName.trim().isNotEmpty) {
+        tab.name = newName.trim();
+      }
+      if (newData != null) {
+        tab.data = newData;
+      }
+      tab.updatedAt = DateTime.now().toIso8601String();
+      savedTabsList[index] = tab;
+      _saveSavedTabsListToLocal();
+
+      // If matching tab is open in active tab bar, update it as well
+      final activeIndex = tabsIndex.indexWhere((t) => t.id == tab.id);
+      if (activeIndex != -1) {
+        tabsIndex[activeIndex].name = tab.name;
+        tabsIndex[activeIndex].data = tab.data;
+        if (selected.id == tab.id) {
+          assignSelection(tabsIndex[activeIndex]);
+        }
+        _saveTabsToLocal();
+      }
+      ShowToastDialog.showToast("Updated '${tab.name}'");
     }
   }
 
-  Future<void> deleteJsonFromCloud(String id) async {
-    final success = await CloudStorageManager.service.deleteJson(id);
-    if (success) {
-      await refreshSavedJsons();
-      ShowToastDialog.showToast("Document deleted");
+  void loadSavedTabToActive(TabModel savedTab) {
+    final existingIndex = tabsIndex.indexWhere((t) => t.id == savedTab.id);
+    if (existingIndex != -1) {
+      final activeTab = tabsIndex[existingIndex];
+      onSelect(activeTab);
     } else {
-      ShowToastDialog.showToast("Delete failed");
+      final newTab = TabModel.fromJson(savedTab.toJson());
+      tabsIndex.add(newTab);
+      saveOldSelection();
+      select(newTab);
+      assignSelection(newTab);
+      _saveTabsToLocal();
+    }
+    ShowToastDialog.showToast("Loaded '${savedTab.name}' into editor");
+    if (Get.isDialogOpen ?? false) {
+      Get.back();
     }
   }
 
-  void loadCloudJson(String content) {
-    controller.text = content;
-    Get.back();
-    ShowToastDialog.showToast("Loaded JSON from cloud");
-  }
-
-  void toggleCloudMode(String mode) async {
-    if (mode == 'Firebase' && !CloudStorageManager.firebaseInitialized) {
-      ShowToastDialog.showToast("Firebase is not configured on this device");
-      return;
-    }
-    await logoutCloud();
-    if (mode == 'Firebase') {
-      CloudStorageManager.service = FirebaseCloudStorageService();
-      cloudSyncMode.value = 'Firebase';
-    } else {
-      CloudStorageManager.service = SimulatedCloudStorageService();
-      cloudSyncMode.value = 'Local';
-    }
-    _initCloudUser();
-    ShowToastDialog.showToast("Switched sync mode to $mode");
+  void toggleCloudMode(String mode) {
+    ShowToastDialog.showToast("Local mode active");
   }
 
   _loadTheme() async {
@@ -448,7 +470,11 @@ class HomePageController extends GetxController {
       _saveTabsToLocal();
     } else if (val == "Clear") {
       controller.text = "";
-    } else if (val == "Load JSON data") {}
+    } else if (val == "Save tab") {
+      saveCurrentTabToSavedList();
+    } else if (val == "Saved Tabs") {
+      onProfile();
+    }
   }
 
   onFormat() {

@@ -61,31 +61,57 @@ void main() {
     expect(tab1.data, '{"tab": "first"}');
   });
 
-  test('Closing a tab deletes its saved data from local storage and memory', () async {
+  test('Closing a tab deletes its active session, but saved tab remains in savedTabsList', () async {
     final controller = Get.put(HomePageController());
     await pumpEventQueue();
 
-    controller.controller.text = '{"tab": "first"}';
-    controller.onAdd();
+    controller.controller.text = '{"tab": "persistent"}';
+    final activeTab = controller.selected;
+
+    // Save tab to permanent Saved Tabs List
+    controller.saveCurrentTabToSavedList(customName: 'MyPersistentTab');
+    expect(controller.savedTabsList.length, 1);
+    expect(controller.savedTabsList.first.name, 'MyPersistentTab');
+
+    // Close the active tab session
+    controller.onRemove(activeTab);
     await pumpEventQueue();
-    controller.controller.text = '{"tab": "second"}';
 
-    expect(controller.tabsIndex.length, 2);
-    final tab2 = controller.tabsIndex[1];
+    // Closed active session is gone from top bar
+    expect(controller.tabsIndex.any((t) => t.id == activeTab.id), false);
 
-    // Remove Tab 2
-    controller.onRemove(tab2);
+    // BUT tab remains saved in savedTabsList!
+    expect(controller.savedTabsList.length, 1);
+    expect(controller.savedTabsList.first.name, 'MyPersistentTab');
+    expect(controller.savedTabsList.first.data, '{"tab": "persistent"}');
+
+    // Re-load the closed tab back to active editor tabs from saved list
+    final savedTab = controller.savedTabsList.first;
+    controller.loadSavedTabToActive(savedTab);
     await pumpEventQueue();
 
-    expect(controller.tabsIndex.length, 1);
-    expect(controller.tabsIndex.any((t) => t.id == tab2.id), false);
-    expect(controller.selected.data, '{"tab": "first"}');
+    expect(controller.selected.name, 'MyPersistentTab');
+    expect(controller.controller.text, '{"tab": "persistent"}');
+  });
 
-    // Verify local storage is updated
-    final prefs = await SharedPreferences.getInstance();
-    final savedTabsString = prefs.getString('saved_tabs');
-    expect(savedTabsString, isNotNull);
-    expect(savedTabsString!.contains('second'), false);
-    expect(savedTabsString.contains('first'), true);
+  test('Edit and Delete saved tabs from Saved Tabs list', () async {
+    final controller = Get.put(HomePageController());
+    await pumpEventQueue();
+
+    controller.controller.text = '{"foo": "bar"}';
+    controller.saveCurrentTabToSavedList(customName: 'OriginalName');
+
+    final savedTab = controller.savedTabsList.first;
+
+    // Edit saved tab
+    controller.editSavedTabInList(savedTab, newName: 'EditedName', newData: '{"foo": "updated"}');
+
+    expect(controller.savedTabsList.first.name, 'EditedName');
+    expect(controller.savedTabsList.first.data, '{"foo": "updated"}');
+    expect(controller.controller.text, '{"foo": "updated"}');
+
+    // Delete saved tab
+    controller.deleteSavedTabFromList(savedTab.id);
+    expect(controller.savedTabsList.isEmpty, true);
   });
 }
