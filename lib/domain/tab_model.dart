@@ -16,7 +16,7 @@ class TabModel {
   TabModel({
      this.id,
      this.name,
-     this.data,
+     this.data = "",
      this.txtSize = 16.0,
      this.state = 0,
      this.isBold = 0,
@@ -27,7 +27,7 @@ class TabModel {
     return {
       'id': id,
       'name': name,
-      'data': data,
+      'data': data ?? '',
       'txtSize': txtSize,
       'state': state,
       'isBold': isBold,
@@ -39,7 +39,7 @@ class TabModel {
     return TabModel(
       id: json['id'],
       name: json['name'],
-      data: json['data'],
+      data: json['data'] ?? '',
       txtSize: (json['txtSize'] as num?)?.toDouble() ?? 16.0,
       state: json['state'] ?? 0,
       isBold: json['isBold'] ?? 0,

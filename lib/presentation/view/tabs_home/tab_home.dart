@@ -166,7 +166,7 @@ class ItemTab extends StatelessWidget {
                     )),
                 2.0.spaceX,
                 Text(
-                  "Tab ${item.name}",
+                  item.name.toString().startsWith("Tab") ? item.name.toString() : "Tab ${item.name}",
                   style: TextStyle(
                       color: isSelected ? Colors.white : unselectedTextColor),
                 ),

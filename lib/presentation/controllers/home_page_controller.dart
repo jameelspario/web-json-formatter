@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -46,31 +47,57 @@ class HomePageController extends GetxController {
   // Signal so JsonBeautifierPage can subscribe and run beautify
   final beautifySignal = StreamController<void>.broadcast();
 
+  bool _isUpdatingController = false;
+
+  static const List<String> _randomKeywords = [
+    "Alpha", "Beta", "Gamma", "Delta", "Nexus", "Quantum", "Vortex", "Pixel",
+    "Matrix", "Cipher", "Apex", "Orbit", "Prism", "Flux", "Echo", "Spark",
+    "Pulse", "Logic", "Cyber", "Nova", "Zenith", "Core", "Node", "Vector",
+    "Aura", "Starlight", "Hyper", "Titan", "Beacon", "Sol", "Omega", "Helix"
+  ];
+
+  String _generateRandomKeyword() {
+    final random = Random();
+    final word = _randomKeywords[random.nextInt(_randomKeywords.length)];
+    final num = random.nextInt(900) + 100;
+    return "$word-$num";
+  }
+
   onSelect(TabModel m) {
+    if (selected.id == m.id) return;
     saveOldSelection();
-    assignSelection(m);
     select(m);
+    assignSelection(m);
     _saveTabsToLocal();
   }
 
   onRemove(TabModel m) {
-    tabsIndex.removeWhere((it) => it.id == m.id);
+    final int removeIndex = tabsIndex.indexWhere((it) => it.id == m.id);
+    if (removeIndex == -1) return;
+
+    final bool removingSelected = (selected.id == m.id);
+    tabsIndex.removeAt(removeIndex);
+
     if (tabsIndex.isEmpty) {
       onAdd();
+    } else if (removingSelected) {
+      final int nextIndex =
+          removeIndex < tabsIndex.length ? removeIndex : tabsIndex.length - 1;
+      final nextTab = tabsIndex[nextIndex];
+      select(nextTab);
+      assignSelection(nextTab);
+      _saveTabsToLocal();
     } else {
-      final mItem = tabsIndex.last;
-      assignSelection(mItem);
-      select(mItem);
       _saveTabsToLocal();
     }
   }
 
   onAdd() {
+    saveOldSelection();
     final val = tabinit();
     tabsIndex.add(val);
-    saveOldSelection();
-    resetSelection();
     select(val);
+    resetSelection();
     _saveTabsToLocal();
   }
 
@@ -85,33 +112,48 @@ class HomePageController extends GetxController {
   }
 
   saveOldSelection() {
-    selected.data = controller.text;
-    selected.txtSize = txtSize.value;
-    selected.isBold = isBold.value;
-    selected.isItalic = isItalic.value;
-    selected.state = state;
+    if (selected.id != null) {
+      selected.data = controller.text;
+      selected.txtSize = txtSize.value;
+      selected.isBold = isBold.value;
+      selected.isItalic = isItalic.value;
+      selected.state = state;
+    }
   }
 
   resetSelection() {
+    _isUpdatingController = true;
     controller.text = "";
     txtSize.value = 16.0;
     isBold.value = 0;
     isItalic.value = 0;
     state = 0;
+    _isUpdatingController = false;
+    _updateJsonValidationAndCursor();
   }
 
   assignSelection(TabModel m) {
-    controller.text = m.data;
-    txtSize.value = m.txtSize;
-    isBold.value = m.isBold;
-    isItalic.value = m.isItalic;
-    state = m.state;
+    _isUpdatingController = true;
+    controller.text = m.data ?? "";
+    txtSize.value = (m.txtSize as num?)?.toDouble() ?? 16.0;
+    isBold.value = m.isBold ?? 0;
+    isItalic.value = m.isItalic ?? 0;
+    state = m.state ?? 0;
+    _isUpdatingController = false;
+    _updateJsonValidationAndCursor();
   }
 
   TabModel tabinit() {
+    count++;
+    final String keyword = _generateRandomKeyword();
     final model = TabModel(
-      id: count++,
-      name: count,
+      id: "${DateTime.now().millisecondsSinceEpoch}_$count",
+      name: keyword,
+      data: "",
+      txtSize: 16.0,
+      state: 0,
+      isBold: 0,
+      isItalic: 0,
     );
     return model;
   }
@@ -277,8 +319,8 @@ class HomePageController extends GetxController {
           }
           selectTab ??= tabsIndex.first;
           
-          assignSelection(selectTab);
           select(selectTab);
+          assignSelection(selectTab);
           return;
         }
       }
@@ -296,9 +338,19 @@ class HomePageController extends GetxController {
   var jsonErrorMsg = "".obs;
 
   _onTextChanged() {
+    if (_isUpdatingController) return;
+
     final text = controller.text;
-    selected.data = text;
-    _saveTabsToLocal();
+    if (selected.id != null) {
+      selected.data = text;
+      _saveTabsToLocal();
+    }
+
+    _updateJsonValidationAndCursor();
+  }
+
+  void _updateJsonValidationAndCursor() {
+    final text = controller.text;
 
     // Validate JSON in the background
     if (text.isEmpty) {
@@ -318,7 +370,9 @@ class HomePageController extends GetxController {
     final cursorPosition = controller.selection.baseOffset;
 
     if (cursorPosition == -1) {
-      return; // No cursor
+      lineNumber = 1;
+      columnNumber.value = 1;
+      return;
     }
 
     // Split the text into lines
@@ -342,8 +396,8 @@ class HomePageController extends GetxController {
     // Determine the column number
     final column = cursorPosition - charsCount + 1;
 
-    lineNumber = line;
-    columnNumber.value = column;
+    lineNumber = line == 0 ? 1 : line;
+    columnNumber.value = column < 1 ? 1 : column;
   }
 
   onSizeChange(double size) {
