@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/home_page_controller.dart';
@@ -24,9 +25,11 @@ class JsonTextFieldController extends TextEditingController {
     int i = 0;
 
     bool isDark = false;
+    HomePageController? homeController;
     try {
       if (Get.isRegistered<HomePageController>()) {
-        isDark = Get.find<HomePageController>().isDark.value == 1;
+        homeController = Get.find<HomePageController>();
+        isDark = homeController.isDark.value == 1;
       }
     } catch (_) {}
 
@@ -160,6 +163,84 @@ class JsonTextFieldController extends TextEditingController {
       spans.add(TextSpan(text: normalVal, style: (style ?? const TextStyle()).copyWith(color: colNormal)));
     }
 
+    // Apply Search Highlights if Find bar is active
+    if (homeController != null &&
+        homeController.isFindBarOpen.value &&
+        homeController.findQuery.value.isNotEmpty) {
+      final matches = homeController.findMatches(src, homeController.findQuery.value);
+      if (matches.isNotEmpty) {
+        final activeIndex = homeController.currentMatchIndex.value - 1;
+        return _applySearchHighlights(spans, matches, activeIndex, style, isDark);
+      }
+    }
+
     return TextSpan(children: spans);
+  }
+
+  TextSpan _applySearchHighlights(
+    List<TextSpan> baseSpans,
+    List<Match> matches,
+    int activeMatchIndex,
+    TextStyle? defaultStyle,
+    bool isDark,
+  ) {
+    final finalSpans = <TextSpan>[];
+    int currentOffset = 0;
+
+    final activeColor = isDark ? const Color(0xFFE65100) : const Color(0xFFFF9800);
+    final matchColor = isDark ? const Color(0xFF5A4D00) : const Color(0xFFFFF176);
+    final activeTextColor = Colors.white;
+
+    for (final span in baseSpans) {
+      final spanText = span.text ?? "";
+      if (spanText.isEmpty) continue;
+      final spanEnd = currentOffset + spanText.length;
+
+      int localStart = 0;
+      while (localStart < spanText.length) {
+        final absPos = currentOffset + localStart;
+
+        int matchIdx = -1;
+        for (int m = 0; m < matches.length; m++) {
+          if (absPos >= matches[m].start && absPos < matches[m].end) {
+            matchIdx = m;
+            break;
+          }
+        }
+
+        if (matchIdx != -1) {
+          final m = matches[matchIdx];
+          final absChunkEnd = min(spanEnd, m.end);
+          final localChunkEnd = absChunkEnd - currentOffset;
+          final chunkText = spanText.substring(localStart, localChunkEnd);
+
+          final isActive = (matchIdx == activeMatchIndex);
+          final highlightStyle = (span.style ?? defaultStyle ?? const TextStyle()).copyWith(
+            backgroundColor: isActive ? activeColor : matchColor,
+            color: isActive ? activeTextColor : (span.style?.color ?? defaultStyle?.color),
+            fontWeight: isActive ? FontWeight.bold : span.style?.fontWeight,
+          );
+
+          finalSpans.add(TextSpan(text: chunkText, style: highlightStyle));
+          localStart = localChunkEnd;
+        } else {
+          int absNextMatch = spanEnd;
+          for (final m in matches) {
+            if (m.start > absPos && m.start < absNextMatch) {
+              absNextMatch = m.start;
+            }
+          }
+          final localChunkEnd = absNextMatch - currentOffset;
+          final chunkText = spanText.substring(localStart, localChunkEnd);
+
+          finalSpans.add(TextSpan(text: chunkText, style: span.style));
+          localStart = localChunkEnd;
+        }
+      }
+
+      currentOffset = spanEnd;
+    }
+
+    return TextSpan(children: finalSpans);
   }
 }

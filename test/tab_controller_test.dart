@@ -114,4 +114,26 @@ void main() {
     controller.deleteSavedTabFromList(savedTab.id);
     expect(controller.savedTabsList.isEmpty, true);
   });
+
+  test('Tab data saves to local storage only when Save Tab option is clicked', () async {
+    final controller = Get.put(HomePageController());
+    await pumpEventQueue();
+
+    // Type text into editor
+    controller.controller.text = '{"unsaved": "data"}';
+    await pumpEventQueue();
+
+    // SharedPreferences should NOT have saved_tabs updated automatically from typing alone
+    final prefsBefore = await SharedPreferences.getInstance();
+    expect(prefsBefore.getString('saved_tabs'), isNull);
+
+    // Click Save Tab option
+    controller.onOptionMenu("Save tab");
+    await pumpEventQueue();
+
+    // Now SharedPreferences has saved_tabs updated
+    final prefsAfter = await SharedPreferences.getInstance();
+    expect(prefsAfter.getString('saved_tabs'), isNotNull);
+    expect(prefsAfter.getString('saved_tabs')!.contains('unsaved'), true);
+  });
 }

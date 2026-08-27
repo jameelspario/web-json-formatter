@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -48,13 +49,57 @@ class HomePageController extends GetxController {
   // Signal so JsonBeautifierPage can subscribe and run beautify
   final beautifySignal = StreamController<void>.broadcast();
 
+  // Split View State Variables (N-Way Dynamic Multi-Split)
+  var isSplitView = false.obs;
+  RxList<TabModel> splitViewTabs = <TabModel>[].obs;
+
+  // Find & Replace State Variables
+  var isFindBarOpen = false.obs;
+  var isReplaceMode = false.obs;
+  var findQuery = "".obs;
+  var replaceText = "".obs;
+  var isMatchCase = false.obs;
+  var isMatchWholeWord = false.obs;
+  var isUseRegex = false.obs;
+  var regexError = "".obs;
+  var matchCount = 0.obs;
+  var currentMatchIndex = 0.obs;
+
   bool _isUpdatingController = false;
 
   static const List<String> _randomKeywords = [
-    "Alpha", "Beta", "Gamma", "Delta", "Nexus", "Quantum", "Vortex", "Pixel",
-    "Matrix", "Cipher", "Apex", "Orbit", "Prism", "Flux", "Echo", "Spark",
-    "Pulse", "Logic", "Cyber", "Nova", "Zenith", "Core", "Node", "Vector",
-    "Aura", "Starlight", "Hyper", "Titan", "Beacon", "Sol", "Omega", "Helix"
+    "Alpha",
+    "Beta",
+    "Gamma",
+    "Delta",
+    "Nexus",
+    "Quantum",
+    "Vortex",
+    "Pixel",
+    "Matrix",
+    "Cipher",
+    "Apex",
+    "Orbit",
+    "Prism",
+    "Flux",
+    "Echo",
+    "Spark",
+    "Pulse",
+    "Logic",
+    "Cyber",
+    "Nova",
+    "Zenith",
+    "Core",
+    "Node",
+    "Vector",
+    "Aura",
+    "Starlight",
+    "Hyper",
+    "Titan",
+    "Beacon",
+    "Sol",
+    "Omega",
+    "Helix"
   ];
 
   String _generateRandomKeyword() {
@@ -69,7 +114,6 @@ class HomePageController extends GetxController {
     saveOldSelection();
     select(m);
     assignSelection(m);
-    _saveTabsToLocal();
   }
 
   onRemove(TabModel m) {
@@ -78,6 +122,11 @@ class HomePageController extends GetxController {
 
     final bool removingSelected = (selected.id == m.id);
     tabsIndex.removeAt(removeIndex);
+    splitViewTabs.removeWhere((t) => t.id == m.id);
+
+    if (splitViewTabs.length < 2) {
+      closeAllSplits();
+    }
 
     if (tabsIndex.isEmpty) {
       onAdd();
@@ -87,9 +136,6 @@ class HomePageController extends GetxController {
       final nextTab = tabsIndex[nextIndex];
       select(nextTab);
       assignSelection(nextTab);
-      _saveTabsToLocal();
-    } else {
-      _saveTabsToLocal();
     }
   }
 
@@ -99,7 +145,6 @@ class HomePageController extends GetxController {
     tabsIndex.add(val);
     select(val);
     resetSelection();
-    _saveTabsToLocal();
   }
 
   void onReorder(int oldIndex, int newIndex) {
@@ -109,7 +154,6 @@ class HomePageController extends GetxController {
     final item =
         tabsIndex.removeAt(oldIndex); // Remove the item from the old position
     tabsIndex.insert(newIndex, item);
-    _saveTabsToLocal();
   }
 
   saveOldSelection() {
@@ -206,9 +250,10 @@ class HomePageController extends GetxController {
   }
 
   void saveTabToSavedList(TabModel tab, {String? customName}) {
-    final String nameToSave = (customName != null && customName.trim().isNotEmpty)
-        ? customName.trim()
-        : tab.name.toString();
+    final String nameToSave =
+        (customName != null && customName.trim().isNotEmpty)
+            ? customName.trim()
+            : tab.name.toString();
     final String dataToSave =
         (selected.id == tab.id) ? controller.text : (tab.data ?? "");
 
@@ -232,6 +277,7 @@ class HomePageController extends GetxController {
     }
 
     _saveSavedTabsListToLocal();
+    _saveTabsToLocal();
     ShowToastDialog.showToast("Saved '${updatedTab.name}' to Saved Tabs list");
   }
 
@@ -304,7 +350,7 @@ class HomePageController extends GetxController {
       final list = tabsIndex.map((tab) => tab.toJson()).toList();
       final jsonString = jsonEncode(list);
       await prefs.setString('saved_tabs', jsonString);
-      
+
       if (selected.id != null) {
         await prefs.setString('selected_tab_id', selected.id.toString());
       }
@@ -326,9 +372,9 @@ class HomePageController extends GetxController {
         if (loadedTabs.isNotEmpty) {
           tabsIndex.clear();
           tabsIndex.addAll(loadedTabs);
-          
+
           count = prefs.getInt('tab_count') ?? loadedTabs.length;
-          
+
           final selectedTabIdStr = prefs.getString('selected_tab_id');
           TabModel? selectTab;
           if (selectedTabIdStr != null) {
@@ -340,7 +386,7 @@ class HomePageController extends GetxController {
             }
           }
           selectTab ??= tabsIndex.first;
-          
+
           select(selectTab);
           assignSelection(selectTab);
           return;
@@ -349,7 +395,7 @@ class HomePageController extends GetxController {
     } catch (e) {
       print("Error loading tabs: $e");
     }
-    
+
     // Fallback if no tabs loaded
     onAdd();
   }
@@ -365,7 +411,6 @@ class HomePageController extends GetxController {
     final text = controller.text;
     if (selected.id != null) {
       selected.data = text;
-      _saveTabsToLocal();
     }
 
     _updateJsonValidationAndCursor();
@@ -426,19 +471,16 @@ class HomePageController extends GetxController {
     print("-------$size");
     txtSize.value = size;
     selected.txtSize = size;
-    _saveTabsToLocal();
   }
 
   onBold() {
     isBold.value = isBold.value == 1 ? 0 : 1;
     selected.isBold = isBold.value;
-    _saveTabsToLocal();
   }
 
   onItalic() {
     isItalic.value = isItalic.value == 1 ? 0 : 1;
     selected.isItalic = isItalic.value;
-    _saveTabsToLocal();
   }
 
   onDark() async {
@@ -462,18 +504,22 @@ class HomePageController extends GetxController {
       beautifySignal.add(null);
       state = 1;
       selected.state = 1;
-      _saveTabsToLocal();
     } else if (val == "Remove white space") {
       compactJson();
       state = 2;
       selected.state = 2;
-      _saveTabsToLocal();
     } else if (val == "Clear") {
       controller.text = "";
     } else if (val == "Save tab") {
       saveCurrentTabToSavedList();
     } else if (val == "Saved Tabs") {
       onProfile();
+    } else if (val == "Split View") {
+      toggleSplitView();
+    } else if (val == "Find") {
+      openFindMode();
+    } else if (val == "Replace") {
+      openReplaceMode();
     }
   }
 
@@ -487,7 +533,6 @@ class HomePageController extends GetxController {
       controller.formatJson(sortJson: false);
       state = 1;
       selected.state = 1;
-      _saveTabsToLocal();
     } catch (e) {
       print("-- $e");
       final jsonified = Utils.jsonifyString(str);
@@ -497,7 +542,6 @@ class HomePageController extends GetxController {
         controller.formatJson(sortJson: false);
         state = 1;
         selected.state = 1;
-        _saveTabsToLocal();
       } catch (e2) {
         print("-- second format attempt failed: $e2");
         if (!JsonUtils.isValidJson(controller.text)) {
@@ -508,7 +552,6 @@ class HomePageController extends GetxController {
             controller.formatJson(sortJson: false);
             state = 1;
             selected.state = 1;
-            _saveTabsToLocal();
           } else {
             logger.logger("${JsonUtils.getJsonParsingError(controller.text)}"
                 .replaceAll("FormatException: SyntaxError:", ""));
@@ -529,5 +572,221 @@ class HomePageController extends GetxController {
   void onClose() {
     beautifySignal.close();
     super.onClose();
+  }
+
+  // ── Dynamic N-Way Split View Methods ─────────────────────────────────────
+
+  void toggleSplitView() {
+    if (isSplitView.value && splitViewTabs.length >= 2) {
+      closeAllSplits();
+    } else {
+      openDefaultSplit();
+    }
+  }
+
+  void openDefaultSplit() {
+    saveOldSelection();
+    if (tabsIndex.length < 2) {
+      final newTab = tabinit();
+      tabsIndex.add(newTab);
+    }
+
+    splitViewTabs.clear();
+    splitViewTabs.add(selected);
+
+    final other = tabsIndex.firstWhereOrNull((t) => t.id != selected.id);
+    if (other != null) {
+      splitViewTabs.add(other);
+    }
+    isSplitView.value = splitViewTabs.length >= 2;
+  }
+
+  void splitTabLeft(TabModel tab) {
+    saveOldSelection();
+    if (tabsIndex.length < 2) {
+      final newTab = tabinit();
+      tabsIndex.add(newTab);
+    }
+    if (!isSplitView.value || splitViewTabs.isEmpty) {
+      splitViewTabs.clear();
+      splitViewTabs.add(selected);
+    }
+    splitViewTabs.removeWhere((t) => t.id == tab.id);
+    splitViewTabs.insert(0, tab);
+
+    if (splitViewTabs.length < 2) {
+      final other = tabsIndex.firstWhereOrNull((t) => t.id != tab.id);
+      if (other != null) splitViewTabs.add(other);
+    }
+    isSplitView.value = splitViewTabs.length >= 2;
+  }
+
+  void splitTabRight(TabModel tab) {
+    saveOldSelection();
+    if (tabsIndex.length < 2) {
+      final newTab = tabinit();
+      tabsIndex.add(newTab);
+    }
+    if (!isSplitView.value || splitViewTabs.isEmpty) {
+      splitViewTabs.clear();
+      splitViewTabs.add(selected);
+    }
+    splitViewTabs.removeWhere((t) => t.id == tab.id);
+    splitViewTabs.add(tab);
+
+    if (splitViewTabs.length < 2) {
+      final other = tabsIndex.firstWhereOrNull((t) => t.id != tab.id);
+      if (other != null) splitViewTabs.insert(0, other);
+    }
+    isSplitView.value = splitViewTabs.length >= 2;
+  }
+
+  void addNewTabToSplit({int? targetIndex}) {
+    saveOldSelection();
+    final newTab = tabinit();
+    tabsIndex.add(newTab);
+    if (!isSplitView.value || splitViewTabs.isEmpty) {
+      splitViewTabs.clear();
+      splitViewTabs.add(selected);
+    }
+    if (targetIndex != null && targetIndex >= 0 && targetIndex <= splitViewTabs.length) {
+      splitViewTabs.insert(targetIndex, newTab);
+    } else {
+      splitViewTabs.add(newTab);
+    }
+    isSplitView.value = true;
+  }
+
+  void replaceSplitPaneTab(int paneIndex, TabModel newTab) {
+    if (paneIndex >= 0 && paneIndex < splitViewTabs.length) {
+      splitViewTabs[paneIndex] = newTab;
+      if (paneIndex == 0) {
+        select(newTab);
+        assignSelection(newTab);
+      }
+    }
+  }
+
+  void moveSplitPaneLeft(int paneIndex) {
+    if (paneIndex > 0 && paneIndex < splitViewTabs.length) {
+      final tab = splitViewTabs.removeAt(paneIndex);
+      splitViewTabs.insert(paneIndex - 1, tab);
+    }
+  }
+
+  void moveSplitPaneRight(int paneIndex) {
+    if (paneIndex >= 0 && paneIndex < splitViewTabs.length - 1) {
+      final tab = splitViewTabs.removeAt(paneIndex);
+      splitViewTabs.insert(paneIndex + 1, tab);
+    }
+  }
+
+  void removePaneFromSplit(int paneIndex) {
+    if (paneIndex >= 0 && paneIndex < splitViewTabs.length) {
+      splitViewTabs.removeAt(paneIndex);
+      if (splitViewTabs.length < 2) {
+        if (splitViewTabs.isNotEmpty) {
+          select(splitViewTabs.first);
+          assignSelection(splitViewTabs.first);
+        }
+        closeAllSplits();
+      }
+    }
+  }
+
+  void closeAllSplits() {
+    splitViewTabs.clear();
+    isSplitView.value = false;
+  }
+
+  // ── Find & Replace Methods ─────────────────────────────────────────────
+
+  void toggleFindBar() {
+    isFindBarOpen.value = !isFindBarOpen.value;
+  }
+
+  void openFindMode() {
+    isFindBarOpen.value = true;
+    isReplaceMode.value = false;
+  }
+
+  void openReplaceMode() {
+    isFindBarOpen.value = true;
+    isReplaceMode.value = true;
+  }
+
+  void toggleReplaceMode() {
+    isReplaceMode.value = !isReplaceMode.value;
+  }
+
+  void closeFindBar() {
+    isFindBarOpen.value = false;
+  }
+
+  List<Match> findMatches(String text, String query) {
+    if (query.isEmpty || text.isEmpty) {
+      regexError.value = "";
+      return [];
+    }
+
+    try {
+      String pattern = query;
+      if (!isUseRegex.value) {
+        pattern = RegExp.escape(query);
+      }
+      if (isMatchWholeWord.value) {
+        pattern = r'\b' + pattern + r'\b';
+      }
+
+      final regExp = RegExp(
+        pattern,
+        caseSensitive: isMatchCase.value,
+        multiLine: true,
+      );
+
+      regexError.value = "";
+      return regExp.allMatches(text).toList();
+    } catch (e) {
+      regexError.value = "Invalid regex";
+      return [];
+    }
+  }
+
+  void replaceInController(TextEditingController targetCtrl) {
+    final query = findQuery.value;
+    if (query.isEmpty) return;
+
+    final text = targetCtrl.text;
+    final matches = findMatches(text, query);
+    if (matches.isEmpty) return;
+
+    int matchIdx = currentMatchIndex.value - 1;
+    if (matchIdx < 0 || matchIdx >= matches.length) {
+      matchIdx = 0;
+    }
+
+    final m = matches[matchIdx];
+    final newText = text.replaceRange(m.start, m.end, replaceText.value);
+    targetCtrl.text = newText;
+    targetCtrl.selection = TextSelection.collapsed(
+      offset: m.start + replaceText.value.length,
+    );
+  }
+
+  void replaceAllInController(TextEditingController targetCtrl) {
+    final query = findQuery.value;
+    if (query.isEmpty) return;
+
+    final text = targetCtrl.text;
+    final matches = findMatches(text, query);
+    if (matches.isEmpty) return;
+
+    String newText = text;
+    for (int i = matches.length - 1; i >= 0; i--) {
+      final m = matches[i];
+      newText = newText.replaceRange(m.start, m.end, replaceText.value);
+    }
+    targetCtrl.text = newText;
+    ShowToastDialog.showToast("Replaced ${matches.length} occurrences");
   }
 }

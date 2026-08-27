@@ -50,52 +50,59 @@ class HomePage extends StatelessWidget {
                 percentages: [0.98, 0.02],
               ),
             ),
-            Obx(() => Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Ln ${controller.lineNumber}, Col ${controller.columnNumber.value}",
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                          color: controller.isDark.value == 1
-                              ? const Color(0xFF8B949E)
-                              : Colors.black54,
-                        ),
+            Obx(() {
+              final isSplit = controller.isSplitView.value && controller.splitViewTabs.length >= 2;
+              final statusText = isSplit
+                  ? "Split View (${controller.splitViewTabs.length} Panes Active) | Ln ${controller.lineNumber}, Col ${controller.columnNumber.value}"
+                  : "Ln ${controller.lineNumber}, Col ${controller.columnNumber.value}";
+
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: controller.isDark.value == 1
+                            ? const Color(0xFF8B949E)
+                            : Colors.black54,
                       ),
-                      if (controller.controller.text.isNotEmpty)
-                        Row(
-                          children: [
-                            Icon(
-                              controller.isValidJson.value
-                                  ? Icons.check_circle_outline_rounded
-                                  : Icons.error_outline_rounded,
-                              size: 14,
+                    ),
+                    if (controller.controller.text.isNotEmpty)
+                      Row(
+                        children: [
+                          Icon(
+                            controller.isValidJson.value
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.error_outline_rounded,
+                            size: 14,
+                            color: controller.isValidJson.value
+                                ? const Color(0xFF10B981)
+                                : Colors.redAccent,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            controller.isValidJson.value
+                                ? "Valid JSON"
+                                : "Invalid JSON",
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                               color: controller.isValidJson.value
                                   ? const Color(0xFF10B981)
                                   : Colors.redAccent,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              controller.isValidJson.value
-                                  ? "Valid JSON"
-                                  : "Invalid JSON",
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: controller.isValidJson.value
-                                    ? const Color(0xFF10B981)
-                                    : Colors.redAccent,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                )),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              );
+            }),
           ],
         ),
       );

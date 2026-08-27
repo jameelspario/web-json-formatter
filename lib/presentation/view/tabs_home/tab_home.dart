@@ -27,6 +27,7 @@ class TabHome extends StatelessWidget {
   final TabModel? selected;
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -45,20 +46,62 @@ class TabHome extends StatelessWidget {
                     return ItemTab(
                       item: it,
                       selected: selected,
-                      callback: () => onSelect?.call(it),
+                      callback: () {
+                        final homeController = Get.find<HomePageController>();
+                        if (homeController.isSplitView.value &&
+                            homeController.selected.id == it.id) {
+                          // Already selected primary, no-op
+                        } else {
+                          onSelect?.call(it);
+                        }
+                      },
                       onRemove: () => onRemove?.call(it),
                     );
                   },
                 )),
           ),
           Obx(() {
-            final isDark = Get.find<HomePageController>().isDark.value == 1;
-            return InkWell(
-              onTap: onAdd,
-              child: Icon(
-                Icons.add,
-                color: isDark ? const Color(0xFF8B949E) : Colors.black54,
-              ),
+            final controller = Get.find<HomePageController>();
+            final isDark = controller.isDark.value == 1;
+            final isSplit = controller.isSplitView.value;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  onTap: onAdd,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: Icon(
+                      Icons.add,
+                      size: 18,
+                      color: isDark ? const Color(0xFF8B949E) : Colors.black54,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: isSplit ? "Close Split View" : "Split View (Side-by-Side)",
+                  child: InkWell(
+                    onTap: controller.toggleSplitView,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isSplit
+                            ? (isDark ? Colors.teal.shade700 : Colors.teal)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(
+                        Icons.splitscreen_rounded,
+                        size: 16,
+                        color: isSplit
+                            ? Colors.white
+                            : (isDark ? const Color(0xFF8B949E) : Colors.black54),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             );
           })
         ],
@@ -106,10 +149,7 @@ class _DraggableTabsState extends State<DraggableTabs> {
       itemBuilder: (context, i) => ReorderableDragStartListener(
         key: ValueKey(i),
         index: i,
-        child: GestureDetector(
-          onSecondaryTap: null,
-          child: widget.builder(widget.items[i], i),
-        ),
+        child: widget.builder(widget.items[i], i),
       ),
     );
   }
@@ -133,7 +173,28 @@ class ItemTab extends StatelessWidget {
     final homeController = Get.find<HomePageController>();
     return Obx(() {
       final isDark = homeController.isDark.value == 1;
-      final bool isSelected = selected?.id == item.id;
+      final isSelected = selected?.id == item.id;
+      final isSplit = homeController.isSplitView.value && homeController.splitViewTabs.length >= 2;
+      final splitIndex = isSplit
+          ? homeController.splitViewTabs.indexWhere((t) => t.id == item.id)
+          : -1;
+      final isInSplit = splitIndex != -1;
+
+      final colors = [
+        Colors.indigoAccent,
+        Colors.teal.shade600,
+        Colors.deepOrangeAccent.shade400,
+        Colors.purpleAccent.shade400,
+        Colors.blueAccent,
+      ];
+
+      Color? tabBgColor;
+      if (isInSplit) {
+        tabBgColor = colors[splitIndex % colors.length];
+      } else if (isSelected) {
+        tabBgColor = Colors.indigoAccent;
+      }
+
       final Color unselectedTextColor =
           isDark ? const Color(0xFFE6EDF3) : Colors.black87;
       final Color unselectedIconColor =
@@ -146,11 +207,13 @@ class ItemTab extends StatelessWidget {
         child: InkWell(
           hoverColor: Colors.indigoAccent.shade100,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
-          onTap: () => callback?.call(),
+          onTap: () {
+            callback?.call();
+          },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
-              color: isSelected ? Colors.indigoAccent : null,
+              color: tabBgColor,
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(5.0), topRight: Radius.circular(5)),
               border: Border(right: BorderSide(width: 1, color: borderColor)),
@@ -161,49 +224,85 @@ class ItemTab extends StatelessWidget {
                 SvgPicture.asset("assets/svg/json.svg",
                     width: 18,
                     colorFilter: ColorFilter.mode(
-                      isSelected ? Colors.white : unselectedIconColor,
+                      (isSelected || isInSplit) ? Colors.white : unselectedIconColor,
                       BlendMode.srcIn,
                     )),
                 2.0.spaceX,
                 Text(
                   item.name.toString().startsWith("Tab") ? item.name.toString() : "Tab ${item.name}",
                   style: TextStyle(
-                      color: isSelected ? Colors.white : unselectedTextColor),
+                      color: (isSelected || isInSplit) ? Colors.white : unselectedTextColor,
+                      fontSize: 12),
                 ),
-                selected?.id != item.id
-                    ? Container()
-                    : Row(
-                        children: [
-                          2.0.spaceX,
-                          InkWell(
-                            onTap: () => homeController.saveTabToSavedList(item),
-                            child: Padding(
-                              padding: const EdgeInsets.all(2.0),
-                              child: Icon(
-                                Icons.bookmark_add_outlined,
-                                size: 12,
-                                color: isSelected
-                                    ? Colors.white
-                                    : unselectedTextColor,
-                              ),
-                            ),
-                          ),
-                          2.0.spaceX,
-                          InkWell(
-                            onTap: onRemove,
-                            child: Padding(
-                              padding: const EdgeInsets.all(2.0),
-                              child: Icon(
-                                Icons.close,
-                                size: 10,
-                                color: isSelected
-                                    ? Colors.white
-                                    : unselectedTextColor,
-                              ),
-                            ),
-                          ),
-                        ],
+                if (isInSplit) ...[
+                  2.0.spaceX,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text("P${splitIndex + 1}",
+                        style: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+                if (isSelected || isInSplit) ...[
+                  2.0.spaceX,
+                  Tooltip(
+                    message: "Save tab",
+                    child: InkWell(
+                      onTap: () => homeController.saveTabToSavedList(item),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2.0),
+                        child: Icon(
+                          Icons.bookmark_add_outlined,
+                          size: 12,
+                          color: Colors.white,
+                        ),
                       ),
+                    ),
+                  ),
+                  Tooltip(
+                    message: "Split Left",
+                    child: InkWell(
+                      onTap: () => homeController.splitTabLeft(item),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2.0),
+                        child: Icon(
+                          Icons.west_rounded,
+                          size: 11,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Tooltip(
+                    message: "Split Right",
+                    child: InkWell(
+                      onTap: () => homeController.splitTabRight(item),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2.0),
+                        child: Icon(
+                          Icons.east_rounded,
+                          size: 11,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  2.0.spaceX,
+                  InkWell(
+                    onTap: onRemove,
+                    child: const Padding(
+                      padding: EdgeInsets.all(2.0),
+                      child: Icon(
+                        Icons.close,
+                        size: 10,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

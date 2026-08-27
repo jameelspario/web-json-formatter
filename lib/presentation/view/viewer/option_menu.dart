@@ -67,9 +67,6 @@ class OptionMenu extends StatelessWidget {
                 4.0.spaceX,
                 Obx(
                   () => IconButton(
-                    // icon: Icon(
-                    //   isDark?.value == 1 ? Icons.dark_mode : Icons.light_mode,
-                    // ),
                     icon: SvgPicture.asset(isDark?.value == 1 ? "assets/svg/dark-mode.svg": "assets/svg/light-mode.svg" ,
                         width: 18,
                         colorFilter: ColorFilter.mode(
@@ -83,6 +80,30 @@ class OptionMenu extends StatelessWidget {
                         ? 'Switch to Light Mode'
                         : 'Switch to Dark Mode',
                     onPressed: onDark,
+                  ),
+                ),
+                4.0.spaceX,
+                Obx(
+                  () => IconButton(
+                    icon: Icon(
+                      Icons.search_rounded,
+                      size: 18,
+                      color: isDark?.value == 1 ? Colors.white : Colors.grey.shade700,
+                    ),
+                    tooltip: 'Find (Ctrl+F)',
+                    onPressed: () => callback?.call("Find"),
+                  ),
+                ),
+                4.0.spaceX,
+                Obx(
+                  () => IconButton(
+                    icon: Icon(
+                      Icons.find_replace_rounded,
+                      size: 18,
+                      color: isDark?.value == 1 ? Colors.white : Colors.grey.shade700,
+                    ),
+                    tooltip: 'Replace (Ctrl+H)',
+                    onPressed: () => callback?.call("Replace"),
                   ),
                 ),
               ],

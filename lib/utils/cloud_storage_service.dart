@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/cloud_json_model.dart';
 
@@ -216,13 +217,22 @@ class CloudStorageManager {
   static Future<void> init() async {
     await SimulatedCloudStorageService.init();
     try {
-      // Try to initialize Firebase
+      if (Firebase.apps.isNotEmpty) {
+        service = FirebaseCloudStorageService();
+        firebaseInitialized = true;
+        return;
+      }
+      if (kIsWeb) {
+        // On web platform, Firebase.initializeApp() requires options parameter.
+        // Fallback cleanly to Simulated Cloud Storage without throwing assertion failure.
+        service = SimulatedCloudStorageService();
+        firebaseInitialized = false;
+        return;
+      }
       await Firebase.initializeApp();
       service = FirebaseCloudStorageService();
       firebaseInitialized = true;
-      print("Firebase initialized successfully");
     } catch (e) {
-      print("Firebase init skipped (falling back to Simulated Local Cloud): $e");
       service = SimulatedCloudStorageService();
       firebaseInitialized = false;
     }
